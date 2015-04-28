@@ -18,7 +18,7 @@ This is similar to the approach taken by implementations of reverse-mode automat
 ## Examples:
 A simple example of computing `linear(x1) + x2 * sigmoid(x3)`, but **randomly** replacing `sigmoid(x3)` with `x3` sometimes:
 ```lua
-lin = nn.Linear()
+lin = nn.Linear(5,5)
 add = nn.CAddTable()
 mul = nn.CMulTable()
 sigm = nn.Sigmoid()
@@ -28,7 +28,7 @@ tape = autobw.Tape()
 -------------- START OF FORWARD PASS --------------
 -- records the sequence of operations
 tape:begin()
-coin_flip = torch.rand()[1]
+coin_flip = torch.rand(1)[1]
 val1 = lin:forward(x1)
 
 if coin_flip > 0.5 then
@@ -37,7 +37,7 @@ else
   maybe_sigmoid = x3
 end
 
-result = add:forward{val1, mul:forward{x2, maybe_sigmoid})
+result = add:forward{val1, mul:forward{x2, maybe_sigmoid}}
 tape:stop()
 -------------- END OF FORWARD PASS --------------
 
