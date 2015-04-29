@@ -2,7 +2,7 @@ package = "autobw"
 version = "scm-1"
 
 source = {
-   url = "git://github.com/bshillingford/autobw.git"
+   url = "git://github.com/bshillingford/autobw.torch.git"
 }
 
 description = {
@@ -11,7 +11,7 @@ description = {
        Automatically induces the backwards pass based on a sequence of forward() calls 
        on nn Modules and Criterions, without needing to compute them manually.
    ]],
-   homepage = "https://github.com/bshillingford/autobw",
+   homepage = "https://github.com/bshillingford/autobw.torch",
    license = "BSD"
 }
 
