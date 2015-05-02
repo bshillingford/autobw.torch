@@ -63,9 +63,22 @@ end
 function Tape:begin()
     self.tape = {}
     self._x_to_dx = {} -- map tensor's ptr to the corresp dtensor
+    self._called = {} -- set of modules/criterions' ptrs for which forward already called
 
     self._orig_mod_forward = nn.Module.forward
     nn.Module.forward = function(self_, input)
+        -- enforce that this instance's forward() is only called once
+        if self._called[ptr(self_)] then
+            error[[Forward should only be called once per module, perhaps you meant to create copies and 
+                   use these? For example:
+
+                   s = nn.Sigmoid()
+                   s2 = s:clone()
+                   result = s:forward(s2:forward(input))
+            ]]
+        end
+        self._called[ptr(self_)] = true
+
         -- capture forward pass's input and output
         local output = self._orig_mod_forward(self_, input)
         self.tape[#self.tape+1] = { module=self_, input=input, output=output }
@@ -74,11 +87,24 @@ function Tape:begin()
 
     self._orig_crit_forward = nn.Criterion.forward
     nn.Criterion.forward = function(self_, input, target)
+        -- enforce that this instance's forward() is only called once
+        if self._called[ptr(self_)] then
+            error[[Forward should only be called once per module, perhaps you meant to create copies and 
+                   use these? For example:
+
+                   s = nn.Sigmoid()
+                   s2 = s:clone()
+                   result = s:forward(s2:forward(input))
+            ]]
+        end
+        self._called[ptr(self_)] = true
+
         local output = self._orig_crit_forward(self_, input, target)
         self.tape[#self.tape+1] = { criterion=self_, input=input, target=target, output=output }
         return output
     end
 end
+Tape.start = begin
 
 function Tape:stop()
     nn.Module.forward = self._orig_mod_forward
