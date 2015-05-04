@@ -14,12 +14,13 @@ local function zip_foreach(tbl1, tbl2, f)
     elseif utils.istable(tbl1) and utils.istable(tbl2) then
         assert(#tbl1 == #tbl2)
         for i=1,#tbl1 do
-            assert(utils.istensor(tbl1[i]))
-            assert(utils.istensor(tbl2[i]))
-            f(tbl1[i], tbl2[i])
+            if utils.istensor(tbl1[i]) and utils.istensor(tbl2[i]) then
+                f(tbl1[i], tbl2[i])
+            else
+                zip_foreach(tbl1[i], tbl2[i], f)
+            end
         end
     else
-        -- TODO: handle nested tables of tensors?
         error('shouldnt reach here, type mismatch between tbl1 and tbl2?')
     end
 end
@@ -36,11 +37,15 @@ function Tape:_adjoint(x)
     elseif utils.istable(x) then
         local ret = {}
         for i=1,#x do
-            ret[i] = mapping[ptr(x[i])] or self:_zero(x[i])
+            if utils.istensor(x[i]) then
+                ret[i] = mapping[ptr(x[i])] or self:_zero(x[i])
+            else
+                -- for nested tables of tensors
+                ret[i] = self:_adjoint(x[i])
+            end
         end
         return ret
     else
-        -- TODO: handle nested tables of tensors?
         error('shouldnt reach here')
     end
 end
