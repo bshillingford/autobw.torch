@@ -50,6 +50,11 @@ tape:backward()
 Note: I don't actually use the gradients at all here, and I don't set them to zero first, just to keep the example simple.
 See also [our nngraph practical](https://github.com/oxford-cs-ml-2015/practical5/blob/master/practical5.pdf) for the equivalent in `nngraph`.
 
+
+### RNN Example
+
+See the [examples folder](examples/) for a [fully functional rnn example](examples/rnn_example.lua) with toy data.
+
 ### LSTM example
 The LSTM example <https://github.com/oxford-cs-ml-2015/practical6> can easily be shortened by using this. We delete the backward pass, and simply play it back from the recorded forward pass:
 ```lua
