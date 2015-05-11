@@ -41,7 +41,6 @@ local model = {
 		for i = 1, inputs:size(1) do
 			output, next_state = unpack(self.rnn:forward({inputs[i], next_state}))
 			loss = loss + self.criterion:forward(output, targets[i])
-			self.tape:step()
 		end
 
 		self.tape:stop()
