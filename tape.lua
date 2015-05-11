@@ -131,7 +131,6 @@ function Tape:backward()
 
         if dinput then
             zip_foreach(o.input, dinput, function(x, dx)
-                assert(self._x_to_dx[ptr(x)] == nil)
                 self._x_to_dx[ptr(x)] = dx
             end)
         end
