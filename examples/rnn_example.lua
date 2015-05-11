@@ -8,7 +8,7 @@ local n_input = 1
 local n_output = 1
 local n_hidden = 25
 local batch_size = 15
-local seq_length = 25
+local seq_length = 5
 
 local function make_rnn(n_input, n_hidden, n_output)
 	local input = nn.Identity()()
@@ -27,7 +27,6 @@ end
 local model = {
 	rnn = make_rnn(n_input, n_hidden, n_output),
 	criterion = nn.MSECriterion(),
-
 	start_state = torch.zeros(batch_size, n_hidden),
 
 	tape = autobw.Tape(),
@@ -45,6 +44,8 @@ local model = {
 
 		self.tape:stop()
 
+		self.start_state:copy(next_state)
+
 		return loss
 	end,
 
@@ -54,14 +55,15 @@ local model = {
 }
 
 local data = torch.linspace(0, 20*math.pi, 1000):sin():view(-1, 1)
+local start_idx = torch.Tensor(batch_size):uniform():mul(data:size(1) - seq_length):ceil():long()
+local batch = torch.zeros(seq_length, batch_size, 1)
 
 local function next_batch()
-	local batch = torch.zeros(seq_length, batch_size, 1)
-	local start_idx = torch.Tensor(batch_size):uniform():mul(data:size(1) - seq_length):ceil():long()
-	for i = 1, batch_size do
-		batch:select(2, i):copy(data:sub(start_idx[i], start_idx[i]+seq_length-1))
+	for i = 1, seq_length do
+		start_idx:apply(function(x) return (x+1) % data:size(1) + 1 end)
+		batch:select(1, i):copy(data:index(1, start_idx):view(1, -1, 1))
 	end
-	return batch
+	return batch:clone()
 end
 
 local params, grads = model.rnn:getParameters()

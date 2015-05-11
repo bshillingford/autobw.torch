@@ -44,7 +44,7 @@ function Tape:_adjoint(x)
         return mapping[ptr(x)] or self:_zero(x)
     elseif utils.istable(x) then
         local ret = {}
-        for  = 1, #x do
+        for i = 1, #x do
             if utils.istensor(x[i]) then
                 ret[i] = mapping[ptr(x[i])] or self:_zero(x[i])
             else
