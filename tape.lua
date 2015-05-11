@@ -27,9 +27,11 @@ function Tape:__init()
 end
 
 function Tape:reset()
-    -- Clear the internal cache of cloned modules.
+    self.tape = {}
     self._clones = {}
     self._next_clone_idx = {}
+    self._x_to_dx = {}
+    self._zeros = {}
     collectgarbage()
 end
 
