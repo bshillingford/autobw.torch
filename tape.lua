@@ -3,9 +3,6 @@ local Tape = torch.class("autobw.Tape")
 local utils = require'autobw.utils'
 local ptr = torch.pointer
 
-function Tape:__init()
-end
-
 -- loops over zip(tbl1, tbl2), applying f to the pairs of *tensors*
 -- if tbl1 and tbl2 are tensors, then just apply f
 local function zip_foreach(tbl1, tbl2, f)
@@ -13,7 +10,7 @@ local function zip_foreach(tbl1, tbl2, f)
         f(tbl1, tbl2)
     elseif utils.istable(tbl1) and utils.istable(tbl2) then
         assert(#tbl1 == #tbl2)
-        for i=1,#tbl1 do
+        for i = 1, #tbl1 do
             if utils.istensor(tbl1[i]) and utils.istensor(tbl2[i]) then
                 f(tbl1[i], tbl2[i])
             else
@@ -23,6 +20,19 @@ local function zip_foreach(tbl1, tbl2, f)
     else
         error('shouldnt reach here, type mismatch between tbl1 and tbl2?')
     end
+end
+
+function Tape:__init()
+    self:reset()
+end
+
+function Tape:reset()
+    self.tape = {}
+    self._clones = {}
+    self._next_clone_idx = {}
+    self._x_to_dx = {}
+    self._zeros = {}
+    collectgarbage()
 end
 
 -- given a tensor (e.g. x), returns the adjoint for it
@@ -36,7 +46,7 @@ function Tape:_adjoint(x)
         return mapping[ptr(x)] or self:_zero(x)
     elseif utils.istable(x) then
         local ret = {}
-        for i=1,#x do
+        for i = 1, #x do
             if utils.istensor(x[i]) then
                 ret[i] = mapping[ptr(x[i])] or self:_zero(x[i])
             else
@@ -67,24 +77,12 @@ end
 
 function Tape:begin()
     self.tape = {}
-    self._x_to_dx = {} -- map tensor's ptr to the corresp dtensor
-    self._called = {} -- set of modules/criterions' ptrs for which forward already called
+    self._next_clone_idx = {}
+    self._x_to_dx = {} -- map tensor's ptr to the corresponding dtensor
 
     self._orig_mod_forward = nn.Module.forward
     nn.Module.forward = function(self_, input)
-        -- enforce that this instance's forward() is only called once
-        if self._called[ptr(self_)] then
-            error[[Forward should only be called once per module, perhaps you meant to create copies and 
-                   use these? For example:
-
-                   s = nn.Sigmoid()
-                   s2 = s:clone()
-                   result = s:forward(s2:forward(input))
-            ]]
-        end
-        self._called[ptr(self_)] = true
-
-        -- capture forward pass's input and output
+        local self_ = self:_next_clone(self_)
         local output = self._orig_mod_forward(self_, input)
         self.tape[#self.tape+1] = { module=self_, input=input, output=output }
         return output
@@ -92,24 +90,16 @@ function Tape:begin()
 
     self._orig_crit_forward = nn.Criterion.forward
     nn.Criterion.forward = function(self_, input, target)
-        -- enforce that this instance's forward() is only called once
-        if self._called[ptr(self_)] then
-            error[[Forward should only be called once per module, perhaps you meant to create copies and 
-                   use these? For example:
-
-                   s = nn.Sigmoid()
-                   s2 = s:clone()
-                   result = s:forward(s2:forward(input))
-            ]]
-        end
-        self._called[ptr(self_)] = true
-
+        local self_ = self:_next_clone(self_)
         local output = self._orig_crit_forward(self_, input, target)
         self.tape[#self.tape+1] = { criterion=self_, input=input, target=target, output=output }
         return output
     end
 end
-Tape.start = begin
+
+function Tape:start()
+    return self:begin()
+end
 
 function Tape:stop()
     nn.Module.forward = self._orig_mod_forward
@@ -124,8 +114,7 @@ function Tape:record(func, ...)
 end
 
 function Tape:backward()
-    local tape = self.tape
-    for i=#self.tape,1,-1 do
+    for i = #self.tape, 1, -1 do
         local o = self.tape[i]
         local dinput
         if o.criterion then
@@ -148,3 +137,31 @@ function Tape:backward()
     end
 end
 
+function Tape:_next_clone(self_)
+    -- If we've already seen this module then we swap it out for a clone that shares parameters.
+    -- The user owns the original self_ module, but the tape owns any clones it creates.
+    --
+    -- Clones are created lazily and re-used in subsequent forward passes that use the same tape.
+    local clone_self_ = self_
+    local p = ptr(self_)
+
+    if self._clones[p] == nil then
+        -- Never seen this module before, start tracking it
+        self._next_clone_idx[p] = 2 -- not 1
+        self._clones[p] = { self_ }
+    else
+        -- We've seen this module before, find the next available clone
+        local idx = self._next_clone_idx[p] or 1
+        clone_self_ = self._clones[p][idx]
+
+        if clone_self_ == nil then
+            -- No more clones available, need to make another one
+            clone_self_ = utils.shared_clone(self_)
+            self._clones[p][idx] = clone_self_
+        end
+
+        self._next_clone_idx[p] = idx + 1
+    end
+
+    return clone_self_
+end
