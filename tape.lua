@@ -30,9 +30,17 @@ function Tape:reset()
     self.tape = {}
     self._clones = {}
     self._next_clone_idx = {}
-    self._x_to_dx = {}
+    self._adjoint_map = {}
     self._zeros = {}
+    self:clear_adjoint_cache()
     collectgarbage()
+end
+
+function Tape:clear_adjoint_cache()
+  self._adjoint_cache = {
+    buffer = {},
+    buffer_active = {},
+  }
 end
 
 -- given a tensor (e.g. x), returns the adjoint for it
@@ -40,7 +48,7 @@ end
 -- note: shape of return value always the same as its input
 -- note2: if any of the output tensors are not in mapping, returns a zero tensor
 function Tape:_adjoint(x)
-    local mapping = self._x_to_dx
+    local mapping = self._adjoint_map
 
     if utils.istensor(x) then
         return mapping[ptr(x)] or self:_zero(x)
@@ -78,7 +86,8 @@ end
 function Tape:begin()
     self.tape = {}
     self._next_clone_idx = {}
-    self._x_to_dx = {} -- map tensor's ptr to the corresponding dtensor
+    self._adjoint_map = {} -- map tensor's ptr to the corresponding dtensor
+    self._adjoint_cache.buffer_active = {}
 
     self._orig_mod_forward = nn.Module.forward
     nn.Module.forward = function(self_, input)
@@ -131,7 +140,7 @@ function Tape:backward()
 
         if dinput then
             zip_foreach(o.input, dinput, function(x, dx)
-                self._x_to_dx[ptr(x)] = dx
+                self:_update_adjoint(x, dx)
             end)
         end
     end
@@ -165,3 +174,30 @@ function Tape:_next_clone(self_)
 
     return clone_self_
 end
+
+function Tape:_update_adjoint(x, dx)
+  local p = ptr(x)
+  local cache = self._adjoint_cache
+
+  if self._adjoint_map[p] and cache.buffer[p] then
+    -- p has been seen in this pass and there is a buffer for it
+    if not cache.buffer_active[p] then
+      -- the buffer for p exists but has not been used in this pass
+      cache.buffer[p] = cache.buffer[p]:typeAs(dx):resizeAs(dx)
+      cache.buffer[p]:zero()
+      cache.buffer_active[p] = true
+      self._adjoint_map[p] = cache.buffer[p]
+    end
+    self._adjoint_map[p]:add(dx)
+  elseif self._adjoint_map[p] then
+    -- p has been seen in this pass but there is no buffer for it yet
+    cache.buffer[p] = self._adjoint_map[p]:clone()
+    cache.buffer_active[p] = true
+    self._adjoint_map[p] = cache.buffer[p]
+    self._adjoint_map[p]:add(dx)
+  else
+    -- p has not been seen in this pass
+    self._adjoint_map[p] = dx
+  end
+end
+
