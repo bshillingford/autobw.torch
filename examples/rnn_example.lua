@@ -10,7 +10,7 @@ local n_hidden = 25
 local batch_size = 15
 local seq_length = 5
 
-local function make_rnn(n_input, n_hidden, n_output)
+local function make_rnn_layer(n_input, n_hidden)
 	local input = nn.Identity()()
 	local prev_state = nn.Identity()()
 
@@ -19,32 +19,41 @@ local function make_rnn(n_input, n_hidden, n_output)
 		nn.Linear(n_hidden, n_hidden)(prev_state)
 	}))
 
-	local output = nn.Linear(n_hidden, n_output)(next_state)
+    output = nn.Identity()(next_state)
 
 	return nn.gModule({input, prev_state}, {output, next_state})
 end
 
 local model = {
-	rnn = make_rnn(n_input, n_hidden, n_output),
+    -- Add extra layers here (it doesn't help on this problem)
+	layers = {
+        make_rnn_layer(n_input, n_hidden),
+        --make_rnn_layer(n_hidden, n_hidden),
+    },
+	state = {
+        torch.zeros(batch_size, n_hidden),
+        --torch.zeros(batch_size, n_hidden),
+    },
+    output = nn.Linear(n_hidden, n_output),
 	criterion = nn.MSECriterion(),
-	start_state = torch.zeros(batch_size, n_hidden),
 
 	tape = autobw.Tape(),
 
 	forward = function(self, inputs, targets)
 		local loss = 0
-		local next_state = self.start_state
 
 		self.tape:start()
 
-		for i = 1, inputs:size(1) do
-			output, next_state = unpack(self.rnn:forward({inputs[i], next_state}))
-			loss = loss + self.criterion:forward(output, targets[i])
+		for t = 1, inputs:size(1) do
+            local output = inputs[t]
+            for l = 1, #self.layers do
+                output, self.state[l] = unpack(self.layers[l]:forward({output, self.state[l]}))
+            end
+            output = self.output:forward(output)
+			loss = loss + self.criterion:forward(output, targets[t])
 		end
 
 		self.tape:stop()
-
-		self.start_state:copy(next_state)
 
 		return loss
 	end,
@@ -52,6 +61,15 @@ local model = {
 	backward = function(self)
 		self.tape:backward()
 	end,
+
+    get_parameters = function(self)
+        local pack = nn.Sequential()
+        for l = 1, #self.layers do
+            pack:add(self.layers[l])
+        end
+        pack:add(self.output)
+        return pack:getParameters()
+    end
 }
 
 local data = torch.linspace(0, 20*math.pi, 1000):sin():view(-1, 1)
@@ -67,7 +85,7 @@ local function next_batch()
 	return batch:clone()
 end
 
-local params, grads = model.rnn:getParameters()
+local params, grads = model:get_parameters()
 params:uniform(-0.1, 0.1)
 
 local function fopt(x)
