@@ -59,8 +59,9 @@ local start_idx = torch.Tensor(batch_size):uniform():mul(data:size(1) - seq_leng
 local batch = torch.zeros(seq_length, batch_size, 1)
 
 local function next_batch()
+    start_idx:add(-1)
 	for i = 1, seq_length do
-		start_idx:apply(function(x) return (x+1) % data:size(1) + 1 end)
+		start_idx:apply(function(x) return x % data:size(1) + 1 end)
 		batch:select(1, i):copy(data:index(1, start_idx):view(1, -1, 1))
 	end
 	return batch:clone()
