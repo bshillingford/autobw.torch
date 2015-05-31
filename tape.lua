@@ -184,7 +184,7 @@ function Tape:_update_adjoint(x, dx)
     if not cache.buffer_active[p] then
       -- the buffer for p exists but has not been used in this pass
       cache.buffer[p] = cache.buffer[p]:typeAs(dx):resizeAs(dx)
-      cache.buffer[p]:zero()
+      cache.buffer[p]:copy(self._adjoint_map[p])
       cache.buffer_active[p] = true
       self._adjoint_map[p] = cache.buffer[p]
     end
